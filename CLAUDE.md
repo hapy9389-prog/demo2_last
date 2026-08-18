@@ -53,6 +53,13 @@
 - Shared Memory를 Claude prompt 문자열로 포맷팅
   → `lib/memoryPrompt.ts`
 
+- Cross-Character Awareness(다른 캐릭터의 Shared Memory 내용을 확률로 간접 인지)
+  → `lib/crossCharacterAwareness.ts`
+
+- Cross-Character Interaction Awareness(다른 캐릭터와 대화했다는 행동 사실을
+  실제 메시지 기록 기반으로 결정론적으로 인지, §52 참고)
+  → `lib/crossCharacterInteraction.ts`
+
 CLAUDE.md에는 위 파일들의 실제 데이터나 세부 캐릭터 설정을
 불필요하게 복제하지 않는다.
 
@@ -451,7 +458,7 @@ Chat Mode와 Story Mode는 의도적으로 분리되어 있다.
 * Reminder
 * Scheduler
 * Time Awareness
-* Cross Character Awareness의 Chat 동작
+* Cross Character Awareness / Cross-Character Interaction Awareness의 Chat 동작
 * Chat Message Store
 * Chat Claude tool 호출
 
@@ -1544,3 +1551,114 @@ Chat
 새 기능이나 디자인을 추가할 때
 독립적인 gimmick을 하나 더 만드는 것보다
 이 관계의 연속성을 강화하는지를 먼저 판단한다.
+
+---
+
+# 52. Cross-Character Interaction Awareness
+
+## 목적
+
+사용자가 캐릭터 A와 대화한 뒤 다른 캐릭터 B와 대화하고 다시 A로 돌아왔을 때,
+A가 "그동안 사용자가 다른 캐릭터와 대화했다"는 **행동 사실**을 인식하고
+캐릭터 성격에 맞게 자연스럽게(강제 아님, §"On/Off와 데모 모드" 예외) 반응할 수
+있게 한다.
+
+예:
+
+* "어디 갔다 왔어?"
+* "나 없는 사이에 누구랑 얘기한 거 아니야?"
+* "카이랑 이야기하고 온 거야?"
+
+이 기능은 `lib/crossCharacterAwareness.ts`(§1, 다른 캐릭터의 Shared Memory
+내용을 확률로 간접 인지시키는 기존 기능)와 **명확히 다른 별개 계층**이다.
+그 기능은 "무엇을 아는가"(Memory 내용)를 다루고, 이 기능은 "무엇을 했는가"
+(다른 캐릭터와 대화했다는 행동 사실)만 다룬다. 두 기능은 서로 대체 관계가
+아니라 병행 관계이며, 각각 독립적으로 켜고 끌 수 있다(아래 참고).
+
+## A → B → A 동작 방식
+
+```text
+10:00 루나와 대화
+10:05 카이와 대화
+10:10 카이와 대화 종료
+10:12 다시 루나와 대화
+```
+
+이 경우 서버는 다음을 결정론적으로 판정한다.
+
+1. 루나와 사용자가 마지막으로 대화한 시각을 찾는다.
+2. 그 시각 이후에 생성된 메시지 중 `role === "user"`이고 `characterId !== luna`인
+   메시지가 있는지 확인한다.
+3. 있다면 가장 최근(1건)의 characterId를 "가장 최근 상호작용한 다른 캐릭터"로
+   결정한다.
+
+루나에게 보내는 Claude system prompt에는 다음과 같은 정보만 추가된다.
+
+```text
+[다른 캐릭터와의 최근 상호작용]
+사용자는 당신과 마지막으로 대화한 이후 '카이'와 대화했습니다.
+```
+
+## 내용 공유가 아니라 사실만 인식
+
+**다른 캐릭터와 나눈 대화의 내용이나 Shared Memory는 절대 전달하지 않는다.**
+캐릭터 이름과 "대화했다"는 사실만 전달한다. 이 원칙은 prompt 문구로만
+지켜지는 것이 아니라, `buildCrossCharacterInteractionBlock()`(아래 관련 파일
+참고)의 함수 시그니처 자체에 "대화 내용"을 나타내는 파라미터가 없어
+구조적으로 내용이 섞여 들어갈 수 없게 되어 있다.
+
+## 실제 Message 기록 기반 판단
+
+판단은 확률(`Math.random()`)이 아니라 실제 메시지 기록을 기반으로 한다 —
+같은 상황이면 항상 같은 결과가 나오는 결정론적 로직이다. 시간 계산을
+Claude에게 맡기지 않는 것과 같은 원칙(§2)이 여기에도 그대로 적용된다:
+"다른 캐릭터와 대화했는지, 누구와 했는지"는 서버가 결정하고, Claude는
+"그 사실을 이번 응답에서 어떻게(또는 언급할지 말지) 표현할지"만 결정한다.
+
+## 반복 Context 방지
+
+별도 persistent 상태를 추가하지 않고 stateless로 해결한다. 현재 캐릭터에게
+새 user 메시지가 저장되는 순간, 다음 계산의 기준 시각(baseline)이 그
+메시지 시각으로 갱신되어 그 이후로는 "그 갱신된 시각 이후 다른 캐릭터
+메시지"가 없어지므로 자동으로 재감지되지 않는다. §7 "반복 언급 방지"
+(Time Awareness가 새 user 메시지 저장으로 gap을 자연스럽게 줄이는 것)와
+동형(isomorphic)인 메커니즘이다.
+
+## On/Off와 데모 모드
+
+세 개의 env가 서로 완전히 독립이며 자유롭게 조합할 수 있다.
+
+| env | 기본값 | 대상 |
+|---|---|---|
+| `CROSS_CHARACTER_AWARENESS_ENABLED` | `true` | 기존 Memory 기반 Cross-Character Awareness 전체 |
+| `CROSS_CHARACTER_INTERACTION_ENABLED` | `true` | 이 기능(Cross-Character Interaction Awareness) 전체 |
+| `CROSS_CHARACTER_INTERACTION_DEMO_MODE` | `false` | 이 기능이 ON일 때, 감지되면 반드시 한 번 언급하도록 강제하는 데모 전용 모드 |
+
+`CROSS_CHARACTER_INTERACTION_ENABLED=false`면 감지 계산 자체를 스킵하고
+Claude에게 관련 context를 전혀 전달하지 않는다 — 기존 일반 채팅 동작과
+완전히 동일해진다. `CROSS_CHARACTER_INTERACTION_DEMO_MODE=true`는 "언급
+여부"만 강제할 뿐 표현 방식은 여전히 캐릭터 성격에 맡기며, "내용을 아는
+척하지 말라"는 원칙도 데모 모드에서 동일하게 유지된다 — 일반 서비스
+동작에는 절대 영향을 주지 않는 옵트인 스위치다.
+
+개발 환경(`NODE_ENV !== "production"`)에서는 매 요청마다 감지 결과와 두
+기능의 on/off 상태를 콘솔에 로그로 남긴다(`[cross-character-interaction]
+[debug]`, `[cross-awareness][debug]`). production에서는 로그가 남지 않는다.
+
+## 관련 파일 및 테스트 방법
+
+* 순수 판정/prompt 로직 → `lib/crossCharacterInteraction.ts`
+* 기존 Memory 기반 기능의 on/off 함수 → `lib/crossCharacterAwareness.ts`의
+  `isCrossCharacterAwarenessEnabled()`
+* 호출·배선 → `app/api/chat/route.ts`(`addMessage(user)` 이전에 계산),
+  `lib/claude.ts`의 `chatWithCharacter()`
+* 단위 테스트 → `scripts/test-cross-character-interaction.ts`
+  (`npm run test:cross-interaction`)
+
+## Reminder / Time Awareness / Shared Memory와의 관계
+
+이 기능은 Reminder, Time Awareness, Shared Memory, 그리고 기존 Cross-Character
+Awareness와 독립적인 별도 context 계층이다. 같은 system prompt 안에
+공존하지만(§9, `lib/claude.ts`의 system 조립 순서 참고) 서로의 계산이나
+상태에 관여하지 않는다 — 어느 한쪽이 꺼지거나 실패해도 나머지 기능은
+그대로 동작한다.

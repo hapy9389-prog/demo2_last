@@ -12,6 +12,7 @@
     "test:interaction-time": "tsx scripts/test-interaction-time.ts",
     "test:home-status": "tsx scripts/test-home-status.ts",
     "test:cross-awareness": "tsx scripts/test-cross-character-awareness.ts",
+    "test:cross-interaction": "tsx scripts/test-cross-character-interaction.ts",
     "dev:set-interaction-override": "tsx scripts/dev-set-interaction-override.ts",
     "dev:set-cross-awareness-override": "tsx scripts/dev-set-cross-awareness-override.ts"
   },

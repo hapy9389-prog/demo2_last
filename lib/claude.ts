@@ -248,7 +248,16 @@ export async function chatWithCharacter(
   // system은 오늘과 완전히 동일한 문자열이 된다. fireReminderMessage()는 이 인자를
   // 아예 받지 않는다 — proactive 리마인더 발화에는 Cross-Character Awareness를
   // 적용하지 않는다.
-  crossCharacterAwarenessContext: string | null = null
+  crossCharacterAwarenessContext: string | null = null,
+  // Cross-Character Interaction Awareness 기능 전용, 옵션. app/api/chat/route.ts가
+  // lib/crossCharacterInteraction.ts로 만들어 전달한다. 확률 기반
+  // crossCharacterAwarenessContext와 달리 실제 메시지 기록(lib/store.ts) 기반
+  // 결정론적 판정 결과이며, 다른 캐릭터와의 대화 "내용"은 절대 포함하지 않는다(이름과
+  // "대화했다"는 사실만). sharedMemoryContext와 같은 이유로 user 턴이 아니라 system에
+  // 둔다. 이 인자가 없으면(null) system은 오늘과 완전히 동일한 문자열이 된다.
+  // fireReminderMessage()는 이 인자를 아예 받지 않는다 — proactive 리마인더 발화에는
+  // 적용하지 않는다.
+  crossCharacterInteractionContext: string | null = null
 ): Promise<ChatResult> {
   const anthropic = getClient();
 
@@ -275,11 +284,13 @@ export async function chatWithCharacter(
 
   // Shared Memory 블록은 반드시 system의 끝에 온다(CLAUDE.md §9 불변 조건). 순서:
   // 성격(persona) → 응답 형식 규칙(행동 묘사) → 이번 턴 한정 부가 컨텍스트
-  // (Cross-Character Awareness) → 영구 기억(Shared Memory, 반드시 마지막).
+  // (Cross-Character Awareness → Cross-Character Interaction Awareness) →
+  // 영구 기억(Shared Memory, 반드시 마지막).
   const system = [
     character.systemPrompt,
     ACTION_DESCRIPTION_RULES,
     crossCharacterAwarenessContext,
+    crossCharacterInteractionContext,
     sharedMemoryContext,
   ]
     .filter(Boolean)

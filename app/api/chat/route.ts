@@ -4,9 +4,16 @@ import { chatWithCharacter } from "@/lib/claude";
 import {
   buildCrossCharacterAwarenessBlock,
   getCrossCharacterCandidates,
+  isCrossCharacterAwarenessEnabled,
   pickCrossCharacterCandidate,
   shouldUseCrossCharacterAwareness,
 } from "@/lib/crossCharacterAwareness";
+import {
+  buildCrossCharacterInteractionBlock,
+  detectCrossCharacterInteraction,
+  isCrossCharacterInteractionDemoMode,
+  isCrossCharacterInteractionEnabled,
+} from "@/lib/crossCharacterInteraction";
 import { getDevCrossAwarenessOverride } from "@/lib/devCrossAwarenessOverride";
 import { getDevInteractionOverride } from "@/lib/devInteractionOverride";
 import { buildTimeAwarenessForCharacter } from "@/lib/interactionTime";
@@ -20,6 +27,7 @@ import {
   findDuplicateReminder,
   getLastUserMessageAt,
   getMessagesForCharacter,
+  getMessagesSince,
   getRecentHistory,
 } from "@/lib/store";
 import { resolveTriggerTime, validateTriggerTime } from "@/lib/time";
@@ -84,10 +92,17 @@ export async function POST(req: NextRequest) {
   // system prompt에만 임시로 주입한다. 당첨되지 않거나(확률/후보 없음) dev override가
   // 없으면 crossCharacterAwarenessContext는 null이 되어 system prompt가 오늘과 완전히
   // 동일해진다(기존 동작 그대로 유지).
-  const devCrossOverride = getDevCrossAwarenessOverride(characterId);
-  const crossAwarenessChance = character.crossCharacterAwarenessChance ?? 0;
+  // 이 기존 Memory 기반 기능 전체의 on/off. 아래 신규 Cross-Character Interaction
+  // Awareness의 CROSS_CHARACTER_INTERACTION_ENABLED와 완전히 독립된 별도 env다 —
+  // 데모에서는 이 기능만 끄고 신규 기능만 켠 조합으로 운용할 수 있어야 한다.
+  const crossAwarenessEnabled = isCrossCharacterAwarenessEnabled();
+  const devCrossOverride = crossAwarenessEnabled ? getDevCrossAwarenessOverride(characterId) : null;
+  const crossAwarenessChance = crossAwarenessEnabled
+    ? character.crossCharacterAwarenessChance ?? 0
+    : 0;
   const crossAwarenessHit =
-    devCrossOverride?.forceOn === true || shouldUseCrossCharacterAwareness(crossAwarenessChance);
+    crossAwarenessEnabled &&
+    (devCrossOverride?.forceOn === true || shouldUseCrossCharacterAwareness(crossAwarenessChance));
 
   let crossCharacterAwarenessContext: string | null = null;
   let crossAwarenessDebugSelection: { sourceCharacterId: string; memoryId: string } | null = null;
@@ -113,7 +128,9 @@ export async function POST(req: NextRequest) {
     // 넘기면 Next dev의 구조화 로거가 "{}"로 collapse하는 경우가 있어(관찰됨), 문자열로
     // 확실히 남긴다.
     console.log(
-      "[cross-awareness][debug] chance:",
+      "[cross-awareness][debug] enabled:",
+      crossAwarenessEnabled,
+      "chance:",
       crossAwarenessChance,
       "hit:",
       crossAwarenessHit,
@@ -121,6 +138,49 @@ export async function POST(req: NextRequest) {
       devCrossOverride?.forceOn === true,
       "selected:",
       JSON.stringify(crossAwarenessDebugSelection)
+    );
+  }
+
+  // Cross-Character Interaction Awareness 선택(부작용 없음) — 위 Memory 기반
+  // Cross-Character Awareness와는 완전히 독립된 별개 계층이다. 확률이 아니라 실제
+  // 메시지 기록(다른 characterId의 user 메시지) 기반 결정론적 판정이며, 다른
+  // 캐릭터와의 대화 "내용"은 절대 포함하지 않는다(이름과 "대화했다"는 사실만).
+  // 반드시 addMessage(user, 이번 턴) 이전에 계산해야 한다 — Time Awareness와 동일한
+  // 순서 제약(이래야 이번 턴 자체가 "다른 캐릭터와의 상호작용"으로 잘못 카운트되지
+  // 않는다). Time Awareness의 lastInteractionAtISO(dev override 섞임, 위)와는 별개로
+  // 다시 조회한다 — 그건 "가짜 경과시간" 시뮬레이션용이라 실제 메시지 순서 기반인 이
+  // 기능에 섞이면 안 된다.
+  const crossInteractionEnabled = isCrossCharacterInteractionEnabled();
+  const crossInteractionDemoMode = isCrossCharacterInteractionDemoMode();
+  let crossCharacterInteractionContext: string | null = null;
+  let detectedInteraction: { characterId: string; createdAt: string } | null = null;
+  let lastOwnUserMessageAtISO: string | null = null;
+
+  if (crossInteractionEnabled) {
+    lastOwnUserMessageAtISO = getLastUserMessageAt(characterId);
+    const messagesSinceLastOwnMessage = getMessagesSince(lastOwnUserMessageAtISO);
+    detectedInteraction = detectCrossCharacterInteraction(
+      characterId,
+      lastOwnUserMessageAtISO,
+      messagesSinceLastOwnMessage
+    );
+    if (detectedInteraction) {
+      const otherCharacter = getCharacterById(detectedInteraction.characterId);
+      crossCharacterInteractionContext = buildCrossCharacterInteractionBlock(
+        otherCharacter?.name ?? "다른 캐릭터",
+        crossInteractionDemoMode
+      );
+    }
+  }
+  if (isDev) {
+    console.log(
+      `[cross-character-interaction][debug]\n` +
+        `enabled: ${crossInteractionEnabled}\n` +
+        `demoMode: ${crossInteractionDemoMode}\n` +
+        `currentCharacter: ${characterId}\n` +
+        `lastInteractionAt: ${lastOwnUserMessageAtISO}\n` +
+        `otherCharacterDetected: ${detectedInteraction?.characterId ?? "none"}\n` +
+        `detected: ${detectedInteraction !== null}`
     );
   }
 
@@ -139,7 +199,8 @@ export async function POST(req: NextRequest) {
       trimmedMessage,
       timeAwarenessContext,
       sharedMemoryContext,
-      crossCharacterAwarenessContext
+      crossCharacterAwarenessContext,
+      crossCharacterInteractionContext
     );
   } catch (err) {
     console.error("[api/chat] Claude 호출 실패:", err);

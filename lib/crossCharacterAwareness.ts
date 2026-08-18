@@ -59,6 +59,18 @@ const SENSITIVE_TOPIC_KEYWORDS = [
 const UNSAFE_KEYWORDS = [...SECRECY_KEYWORDS, ...SENSITIVE_TOPIC_KEYWORDS];
 
 /**
+ * 이 기존 Memory 기반 Cross-Character Awareness 기능 전체의 on/off 스위치. 신규
+ * Cross-Character Interaction Awareness(lib/crossCharacterInteraction.ts)의
+ * CROSS_CHARACTER_INTERACTION_ENABLED와 완전히 독립된 별도 env다 — 두 기능을 서로
+ * 다른 조합으로 켜고 끌 수 있어야 한다(예: 데모에서는 이 기능만 OFF하고 Interaction
+ * Awareness만 ON). 기본값은 true(기존 동작 유지)이며,
+ * CROSS_CHARACTER_AWARENESS_ENABLED=false로 명시했을 때만 꺼진다.
+ */
+export function isCrossCharacterAwarenessEnabled(): boolean {
+  return process.env.CROSS_CHARACTER_AWARENESS_ENABLED !== "false";
+}
+
+/**
  * content에 위 키워드가 하나라도 포함되면 후보에서 제외한다. non-exhaustive, 우회
  * 가능(위 주석 참고) — export하는 이유는 단위 테스트(scripts/test-cross-character-
  * awareness.ts)에서 store 연동 없이 이 필터 자체의 동작만 독립적으로 검증하기 위함이다.
