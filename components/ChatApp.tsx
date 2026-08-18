@@ -4,12 +4,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CHARACTERS, DEFAULT_CHARACTER_ID, getCharacterById } from "@/lib/characters";
 import { HomeRow, pickSpotlightCharacter } from "@/lib/homeStatus";
 import { formatReminderTime } from "@/lib/time";
-import { ChatResponse, Message, ReminderCardItem, ReminderWithCharacter } from "@/types";
+import {
+  ChatResponse,
+  Message,
+  ReminderCardItem,
+  ReminderWithCharacter,
+  UserSettingsResponse,
+} from "@/types";
 import { ChatWindow } from "./ChatWindow";
 import { HomeScreen } from "./HomeScreen";
 import { MemoryPanel } from "./MemoryPanel";
 import { NewMessageToast } from "./NewMessageToast";
 import { ReminderPanel } from "./ReminderPanel";
+import { SettingsPanel } from "./SettingsPanel";
 
 const POLL_INTERVAL_MS = 3000;
 const DEFAULT_TITLE = "현실 시간과 연결되는 AI 캐릭터 채팅";
@@ -32,6 +39,12 @@ export function ChatApp() {
   const [reminders, setReminders] = useState<ReminderWithCharacter[]>([]);
   const [reminderSheetOpen, setReminderSheetOpen] = useState(false);
   const [memorySheetOpen, setMemorySheetOpen] = useState(false);
+  const [settingsSheetOpen, setSettingsSheetOpen] = useState(false);
+  // 사용자가 UI에서 직접 켜고 끄는 Cross-Character Interaction Awareness 설정.
+  // 서버(lib/settingsStore.ts)가 source of truth이고, 초기값 true는 "최초 로드" 요청이
+  // 끝나기 전까지의 낙관적 기본값일 뿐이다 — 아래 useEffect에서 GET /api/settings로
+  // 실제 값을 덮어쓴다.
+  const [crossCharacterInteractionEnabled, setCrossCharacterInteractionEnabled] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -107,6 +120,20 @@ export function ChatApp() {
         setError("초기 메시지를 불러오지 못했습니다.");
       }
       refreshReminders();
+
+      // 사용자 설정 초기 로드. 실패해도 조용히 낙관적 기본값(true)을 유지한다 —
+      // 설정 하나 때문에 앱 전체 초기화를 실패로 취급하지 않는다.
+      try {
+        const settingsRes = await fetch("/api/settings");
+        const settingsData: UserSettingsResponse = await settingsRes.json();
+        if (settingsData.settings) {
+          setCrossCharacterInteractionEnabled(
+            settingsData.settings.crossCharacterInteractionEnabled
+          );
+        }
+      } catch {
+        // 무시 — 다음 토글 시도에서 다시 서버 값을 반영한다.
+      }
     })();
   }, [refreshReminders]);
 
@@ -218,6 +245,33 @@ export function ChatApp() {
     }
   }, []);
 
+  // 낙관적으로 먼저 반영한 뒤 서버에 저장한다. 실패하면 이전 값으로 롤백하고
+  // 기존 error state(하단 배너)를 그대로 재사용해 알린다 — 이 설정만을 위한 별도
+  // 에러 UI를 새로 만들지 않는다.
+  const handleToggleCrossCharacterInteraction = useCallback(
+    async (next: boolean) => {
+      const previous = crossCharacterInteractionEnabled;
+      setCrossCharacterInteractionEnabled(next);
+      try {
+        const res = await fetch("/api/settings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ crossCharacterInteractionEnabled: next }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || "설정을 저장하지 못했습니다.");
+        }
+        const data: UserSettingsResponse = await res.json();
+        setCrossCharacterInteractionEnabled(data.settings.crossCharacterInteractionEnabled);
+      } catch (err) {
+        setCrossCharacterInteractionEnabled(previous);
+        setError(err instanceof Error ? err.message : "설정을 저장하지 못했습니다.");
+      }
+    },
+    [crossCharacterInteractionEnabled]
+  );
+
   const handleSelectCharacter = useCallback((id: string) => {
     setActiveCharacterId(id);
     setView("chat");
@@ -297,6 +351,7 @@ export function ChatApp() {
             onBack={() => setView("home")}
             onOpenReminders={() => setReminderSheetOpen(true)}
             onOpenMemory={() => setMemorySheetOpen(true)}
+            onOpenSettings={() => setSettingsSheetOpen(true)}
           />
         )}
 
@@ -310,6 +365,13 @@ export function ChatApp() {
         {memorySheetOpen && (
           <MemoryPanel character={activeCharacter} onClose={() => setMemorySheetOpen(false)} />
         )}
+
+        <SettingsPanel
+          open={settingsSheetOpen}
+          crossCharacterInteractionEnabled={crossCharacterInteractionEnabled}
+          onClose={() => setSettingsSheetOpen(false)}
+          onToggleCrossCharacterInteraction={handleToggleCrossCharacterInteraction}
+        />
 
         {toast && <NewMessageToast text={toast} />}
       </div>

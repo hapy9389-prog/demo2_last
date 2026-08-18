@@ -37,6 +37,7 @@ export function ChatWindow({
   onBack,
   onOpenReminders,
   onOpenMemory,
+  onOpenSettings,
 }: {
   character: Character;
   messages: Message[];
@@ -49,6 +50,7 @@ export function ChatWindow({
   onBack: () => void;
   onOpenReminders: () => void;
   onOpenMemory: () => void;
+  onOpenSettings: () => void;
 }) {
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -111,6 +113,7 @@ export function ChatWindow({
         onBack={onBack}
         onOpenReminders={onOpenReminders}
         onOpenMemory={onOpenMemory}
+        onOpenSettings={onOpenSettings}
       />
 
       <div className="no-scrollbar flex-1 space-y-3 overflow-y-auto px-3 py-4">

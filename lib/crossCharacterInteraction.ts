@@ -26,13 +26,37 @@ export interface DetectedOtherCharacterInteraction {
 }
 
 /**
- * 이 기능 전체의 on/off 스위치. lib/crossCharacterAwareness.ts의
- * isCrossCharacterAwarenessEnabled()와 완전히 독립된 별도 env — 두 Cross-Character
+ * 개발자 kill switch(env). 사용자가 UI에서 켜고 끄는 실제 설정은
+ * lib/settingsStore.ts(UserSettings.crossCharacterInteractionEnabled)가 source of
+ * truth다 — 이 함수는 그 위에 있는 전역 비상 스위치일 뿐이다. lib/crossCharacterAwareness.ts의
+ * isCrossCharacterAwarenessEnabled()와도 완전히 독립된 별도 env — 두 Cross-Character
  * 계열 기능을 서로 다른 조합으로 켜고 끌 수 있어야 한다. 기본값은 true(켜짐)이며,
- * CROSS_CHARACTER_INTERACTION_ENABLED=false로 명시했을 때만 꺼진다.
+ * CROSS_CHARACTER_INTERACTION_ENABLED=false로 명시했을 때만 꺼진다. 최종 활성화
+ * 여부는 이 값과 사용자 설정을 함께 보는 resolveCrossCharacterInteractionEnabled()가
+ * 결정한다.
  */
 export function isCrossCharacterInteractionEnabled(): boolean {
   return process.env.CROSS_CHARACTER_INTERACTION_ENABLED !== "false";
+}
+
+/**
+ * 개발자 kill switch(envEnabled)와 사용자 UI 설정(userEnabled)을 조합해 이번 요청에서
+ * 이 기능을 최종적으로 켤지 결정한다. 우선순위:
+ *
+ *   envEnabled=false          -> 무조건 false(사용자 설정과 무관)
+ *   envEnabled=true(기본값) + userEnabled=false -> false(사용자 OFF가 우선)
+ *   envEnabled=true(기본값) + userEnabled=true  -> true
+ *
+ * 결과적으로 단순 AND이지만, "개발자 kill switch가 항상 사용자 설정보다 먼저
+ * 적용된다"는 우선순위 규칙을 이름과 문서로 명시적으로 드러내기 위해 별도 함수로
+ * 둔다 — app/api/chat/route.ts가 이 규칙을 직접 재구현하지 않고 항상 이 함수를
+ * 통해서만 최종 enabled 여부를 판단한다.
+ */
+export function resolveCrossCharacterInteractionEnabled(
+  envEnabled: boolean,
+  userEnabled: boolean
+): boolean {
+  return envEnabled && userEnabled;
 }
 
 /**

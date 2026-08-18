@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Character } from "@/types";
 import { ACCENT_DOT_STYLE } from "@/lib/accentColors";
+import { InteractionMark } from "./InteractionMark";
 import { MemoryMark } from "./MemoryMark";
 import { ReminderMark } from "./ReminderMark";
 
@@ -20,6 +21,7 @@ export function ChatHeader({
   onBack,
   onOpenReminders,
   onOpenMemory,
+  onOpenSettings,
 }: {
   character: Character;
   /** 리마인더/proactive 메시지가 도착할 때마다 증가 — bell 아이콘 강조 애니메이션 재생용. */
@@ -27,6 +29,7 @@ export function ChatHeader({
   onBack: () => void;
   onOpenReminders: () => void;
   onOpenMemory: () => void;
+  onOpenSettings: () => void;
 }) {
   const [imageFailed, setImageFailed] = useState(false);
   const showImage = Boolean(character.image) && !imageFailed;
@@ -89,6 +92,13 @@ export function ChatHeader({
         >
           <ReminderMark className="h-5 w-5" />
         </span>
+      </button>
+      <button
+        onClick={onOpenSettings}
+        aria-label="설정 열기"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-paper-sunken hover:text-ink"
+      >
+        <InteractionMark className="h-5 w-5" />
       </button>
     </header>
   );

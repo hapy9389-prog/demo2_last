@@ -1624,30 +1624,61 @@ Claude에게 맡기지 않는 것과 같은 원칙(§2)이 여기에도 그대�
 (Time Awareness가 새 user 메시지 저장으로 gap을 자연스럽게 줄이는 것)와
 동형(isomorphic)인 메커니즘이다.
 
-## On/Off와 데모 모드
+## On/Off (3단 우선순위)
 
-세 개의 env가 서로 완전히 독립이며 자유롭게 조합할 수 있다.
+이 기능의 On/Off는 개발자가 env를 고치는 것이 아니라 **실제 앱 사용자가 UI에서
+직접 켜고 끄는 설정**이 기본 계층이다. 그 위에 개발자 전용 kill switch(env)와
+데모 전용 강제 언급 모드(env)가 있다.
 
-| env | 기본값 | 대상 |
-|---|---|---|
-| `CROSS_CHARACTER_AWARENESS_ENABLED` | `true` | 기존 Memory 기반 Cross-Character Awareness 전체 |
-| `CROSS_CHARACTER_INTERACTION_ENABLED` | `true` | 이 기능(Cross-Character Interaction Awareness) 전체 |
-| `CROSS_CHARACTER_INTERACTION_DEMO_MODE` | `false` | 이 기능이 ON일 때, 감지되면 반드시 한 번 언급하도록 강제하는 데모 전용 모드 |
+1. **사용자 UI 설정**(최우선 노출 계층) — `ChatHeader`의 설정 아이콘(`InteractionMark`)
+   → 바텀시트(`SettingsPanel`)의 "캐릭터 상호작용 인식" 토글. 설명 문구: "다른
+   캐릭터와 대화한 사실을 캐릭터가 눈치챌 수 있습니다." `lib/settingsStore.ts`
+   (`.data/settings-store.json`)에 영구 저장되어 새로고침/재접속 후에도 유지된다.
+   기본값 ON.
+2. **개발자 kill switch**(env, `CROSS_CHARACTER_INTERACTION_ENABLED`) — `false`로
+   설정하면 사용자 설정과 무관하게 무조건 OFF. 기본값(미설정) ON.
+3. **데모 전용 강제 언급 모드**(env, `CROSS_CHARACTER_INTERACTION_DEMO_MODE`) —
+   `true`면 최종 enabled가 true이고 감지됐을 때 "반드시 한 번 언급"을 강제한다.
+   On/Off 스위치가 아니라 표현 강제 스위치이며, 사용자에게는 노출되지 않는다.
 
-`CROSS_CHARACTER_INTERACTION_ENABLED=false`면 감지 계산 자체를 스킵하고
-Claude에게 관련 context를 전혀 전달하지 않는다 — 기존 일반 채팅 동작과
-완전히 동일해진다. `CROSS_CHARACTER_INTERACTION_DEMO_MODE=true`는 "언급
-여부"만 강제할 뿐 표현 방식은 여전히 캐릭터 성격에 맡기며, "내용을 아는
-척하지 말라"는 원칙도 데모 모드에서 동일하게 유지된다 — 일반 서비스
-동작에는 절대 영향을 주지 않는 옵트인 스위치다.
+우선순위:
 
-개발 환경(`NODE_ENV !== "production"`)에서는 매 요청마다 감지 결과와 두
-기능의 on/off 상태를 콘솔에 로그로 남긴다(`[cross-character-interaction]
-[debug]`, `[cross-awareness][debug]`). production에서는 로그가 남지 않는다.
+```text
+개발자 kill switch=false
+→ 무조건 OFF(사용자 설정과 무관)
+
+개발자 kill switch=true(기본값) + 사용자 설정 OFF
+→ OFF(사용자 OFF가 우선)
+
+개발자 kill switch=true(기본값) + 사용자 설정 ON(기본값)
+→ ON
+```
+
+`lib/crossCharacterInteraction.ts`의
+`resolveCrossCharacterInteractionEnabled(envEnabled, userEnabled)`가 이 규칙의
+source of truth다 — `app/api/chat/route.ts`는 이 함수를 통해서만 최종 enabled
+여부를 판단하고, 그 결과가 `false`면 감지 계산 자체를 스킵해 Claude에게 관련
+context를 전혀 전달하지 않는다(기존 일반 채팅 동작과 완전히 동일해진다). 데모
+모드는 이 최종 enabled가 `true`이고 실제로 감지됐을 때만 작동하므로, 사용자가
+UI에서 OFF했다면 데모 모드가 켜져 있어도 언급이 강제되지 않는다.
+
+기존 Memory 기반 Cross-Character Awareness는 완전히 별개의 env
+(`CROSS_CHARACTER_AWARENESS_ENABLED`, 기본값 `true`)로 독립적으로 켜고 끈다 —
+이 기능의 On/Off(사용자 설정 + kill switch)와는 전혀 다른 계층이다.
+
+개발 환경(`NODE_ENV !== "production"`)에서는 매 요청마다 `envEnabled`/
+`userEnabled`/최종 `enabled`/`demoMode`와 감지 결과를 콘솔에 로그로 남긴다
+(`[cross-character-interaction][debug]`, `[cross-awareness][debug]`).
+production에서는 로그가 남지 않는다.
 
 ## 관련 파일 및 테스트 방법
 
-* 순수 판정/prompt 로직 → `lib/crossCharacterInteraction.ts`
+* 순수 판정/prompt/우선순위 로직 → `lib/crossCharacterInteraction.ts`
+  (`resolveCrossCharacterInteractionEnabled` 포함)
+* 사용자 설정 저장소 → `lib/settingsStore.ts`(`.data/settings-store.json`)
+* 사용자 설정 API → `app/api/settings/route.ts`(`GET`/`PATCH`)
+* 사용자 설정 UI → `components/SettingsPanel.tsx`, `components/InteractionMark.tsx`,
+  `ChatHeader.tsx`의 설정 아이콘, `ChatApp.tsx`의 상태·낙관적 토글 처리
 * 기존 Memory 기반 기능의 on/off 함수 → `lib/crossCharacterAwareness.ts`의
   `isCrossCharacterAwarenessEnabled()`
 * 호출·배선 → `app/api/chat/route.ts`(`addMessage(user)` 이전에 계산),

@@ -218,3 +218,23 @@ export interface MemoryListItem {
 export interface MemoryListResponse {
   memories: MemoryListItem[];
 }
+
+/**
+ * 사용자가 UI에서 직접 켜고 끌 수 있는 전역 설정. lib/settingsStore.ts가 source of
+ * truth 저장소다. 단일 사용자 데모라 userId 없이 설정 1벌만 존재한다.
+ */
+export interface UserSettings {
+  /**
+   * Cross-Character Interaction Awareness(lib/crossCharacterInteraction.ts)를
+   * 사용자가 직접 켜고 끌 수 있는 설정. 기본값 true(켜짐). 개발자 kill switch
+   * (CROSS_CHARACTER_INTERACTION_ENABLED env)와는 별개 계층 — 최종 활성화 여부는
+   * lib/crossCharacterInteraction.ts의 resolveCrossCharacterInteractionEnabled()가
+   * 이 값과 kill switch를 함께 판단한다.
+   */
+  crossCharacterInteractionEnabled: boolean;
+}
+
+/** GET/PATCH /api/settings 응답 모양 */
+export interface UserSettingsResponse {
+  settings: UserSettings;
+}

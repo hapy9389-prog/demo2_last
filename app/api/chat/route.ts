@@ -13,6 +13,7 @@ import {
   detectCrossCharacterInteraction,
   isCrossCharacterInteractionDemoMode,
   isCrossCharacterInteractionEnabled,
+  resolveCrossCharacterInteractionEnabled,
 } from "@/lib/crossCharacterInteraction";
 import { getDevCrossAwarenessOverride } from "@/lib/devCrossAwarenessOverride";
 import { getDevInteractionOverride } from "@/lib/devInteractionOverride";
@@ -21,6 +22,7 @@ import { CHAT_MEMORY_EXTRACTION_INTERVAL, extractMemoryFromChat } from "@/lib/me
 import { buildSharedMemoryBlock } from "@/lib/memoryPrompt";
 import { markMemoriesUsed, selectMemoriesForPrompt, upsertMemory } from "@/lib/memoryStore";
 import { isExplicitReminderRequest, isSourceTextFromCurrentMessage } from "@/lib/reminderGuard";
+import { getSettings } from "@/lib/settingsStore";
 import {
   addMessage,
   addReminder,
@@ -150,7 +152,16 @@ export async function POST(req: NextRequest) {
   // 않는다). Time Awareness의 lastInteractionAtISO(dev override 섞임, 위)와는 별개로
   // 다시 조회한다 — 그건 "가짜 경과시간" 시뮬레이션용이라 실제 메시지 순서 기반인 이
   // 기능에 섞이면 안 된다.
-  const crossInteractionEnabled = isCrossCharacterInteractionEnabled();
+  // 최종 활성화 여부는 개발자 kill switch(env)와 사용자 UI 설정(lib/settingsStore.ts,
+  // 새로고침/재접속해도 유지됨)을 함께 봐야 한다 — 우선순위는
+  // resolveCrossCharacterInteractionEnabled()가 유일한 source of truth다(kill switch
+  // OFF가 항상 사용자 설정보다 우선).
+  const crossInteractionEnvEnabled = isCrossCharacterInteractionEnabled();
+  const crossInteractionUserEnabled = getSettings().crossCharacterInteractionEnabled;
+  const crossInteractionEnabled = resolveCrossCharacterInteractionEnabled(
+    crossInteractionEnvEnabled,
+    crossInteractionUserEnabled
+  );
   const crossInteractionDemoMode = isCrossCharacterInteractionDemoMode();
   let crossCharacterInteractionContext: string | null = null;
   let detectedInteraction: { characterId: string; createdAt: string } | null = null;
@@ -175,6 +186,8 @@ export async function POST(req: NextRequest) {
   if (isDev) {
     console.log(
       `[cross-character-interaction][debug]\n` +
+        `envEnabled: ${crossInteractionEnvEnabled}\n` +
+        `userEnabled: ${crossInteractionUserEnabled}\n` +
         `enabled: ${crossInteractionEnabled}\n` +
         `demoMode: ${crossInteractionDemoMode}\n` +
         `currentCharacter: ${characterId}\n` +

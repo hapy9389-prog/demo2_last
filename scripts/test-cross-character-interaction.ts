@@ -5,6 +5,12 @@
  * 실 API 배선(app/api/chat/route.ts에서 실제로 A→B→A 순서로 채팅)은 이 스크립트로
  * 커버되지 않는다 — 이 기능은 순수 메시지 순서 기반 결정론적 로직이라 dev 환경에서
  * 실제 채팅만으로 즉시 재현 가능하므로 별도 dev override 스크립트는 만들지 않았다.
+ *
+ * lib/settingsStore.ts round-trip 테스트는 실제 .data/settings-store.json을 건드린다
+ * (scripts/test-cross-character-awareness.ts가 실제 .data/memory-store.json을 읽는
+ * 것과 동일한 관례) — 테스트 종료 시 원래 값으로 복원해 다른 실행에 영향을 주지 않는다.
+ * app/api/settings/route.ts 자체는 이 프로젝트의 기존 관례대로(memories/reminders
+ * route도 스크립트 테스트 없음) 별도 자동 테스트 없이 수동 확인으로 커버한다.
  */
 import {
   buildCrossCharacterInteractionBlock,
@@ -12,8 +18,10 @@ import {
   findMostRecentOtherCharacterUserMessage,
   isCrossCharacterInteractionDemoMode,
   isCrossCharacterInteractionEnabled,
+  resolveCrossCharacterInteractionEnabled,
 } from "../lib/crossCharacterInteraction";
 import { isCrossCharacterAwarenessEnabled } from "../lib/crossCharacterAwareness";
+import { getSettings, updateSettings } from "../lib/settingsStore";
 import { Message } from "../types";
 
 let passCount = 0;
@@ -227,6 +235,39 @@ check(
     });
   }
 );
+
+console.log("\n--- resolveCrossCharacterInteractionEnabled: 개발자 kill switch / 사용자 설정 우선순위 ---");
+check("kill switch OFF -> 사용자 설정과 무관하게 항상 false", () => {
+  assertEqual(resolveCrossCharacterInteractionEnabled(false, true), false, "kill-switch-off, user-on");
+  assertEqual(resolveCrossCharacterInteractionEnabled(false, false), false, "kill-switch-off, user-off");
+});
+check("kill switch ON + 사용자 OFF -> false(사용자 OFF가 우선)", () => {
+  assertEqual(resolveCrossCharacterInteractionEnabled(true, false), false, "kill-switch-on, user-off");
+});
+check("kill switch ON + 사용자 ON -> true", () => {
+  assertEqual(resolveCrossCharacterInteractionEnabled(true, true), true, "kill-switch-on, user-on");
+});
+
+console.log("\n--- lib/settingsStore.ts: getSettings/updateSettings round-trip ---");
+check("updateSettings로 끈 뒤 getSettings에 반영되고, 다시 켠 뒤에도 반영된다", () => {
+  const original = getSettings().crossCharacterInteractionEnabled;
+  try {
+    const afterOff = updateSettings({ crossCharacterInteractionEnabled: false });
+    assertEqual(afterOff.crossCharacterInteractionEnabled, false, "update-returns-off");
+    assertEqual(
+      getSettings().crossCharacterInteractionEnabled,
+      false,
+      "get-reflects-off"
+    );
+
+    const afterOn = updateSettings({ crossCharacterInteractionEnabled: true });
+    assertEqual(afterOn.crossCharacterInteractionEnabled, true, "update-returns-on");
+    assertEqual(getSettings().crossCharacterInteractionEnabled, true, "get-reflects-on");
+  } finally {
+    // 다른 테스트/실제 실행에 영향을 주지 않도록 원래 값으로 복원한다.
+    updateSettings({ crossCharacterInteractionEnabled: original });
+  }
+});
 
 console.log(`\n=== 결과: ${passCount}개 통과 / ${failCount}개 실패 ===`);
 if (failCount > 0) {
