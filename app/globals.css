@@ -1,0 +1,240 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+
+  /*
+   * "포토카드 다이어리" 디자인 토큰. 1차 적용 범위는 Home 화면
+   * (HomeScreen/CharacterCard/HomeSpotlight/StoryModeEntry/HomeReminderSummary)이고,
+   * 2차로 Chat 본체(ChatHeader/ChatWindow/MessageBubble/ReminderSystemCard/
+   * ProcessingIndicator/NewMessageToast)도 이 토큰으로 옮겨왔다. ReminderPanel/
+   * MemoryPanel(바텀시트)과 Story 화면은 아직 기존 neutral/rose/amber/violet 클래스를
+   * 그대로 쓴다 — 한 번에 전체를 갈아엎지 않고 다음 단계에서 점진적으로 옮겨간다.
+   */
+
+  /** Chat/Home 기본 바탕. "Modern Character Entertainment App" 2차 리디자인에서
+   *  진한 크림/베이지가 오래된 다이어리처럼 탁해 보인다는 피드백에 따라 채도를 크게
+   *  낮췄다 — 순백은 아니되 "크림"으로 읽히지 않는 선의 warm off-white. */
+  --paper: #f6f4f0;
+  /** paper보다 한 단 낮은 면 — 섹션 구분, 리마인더 요약 스트립 등. */
+  --paper-sunken: #ece8e1;
+  /** 기본 텍스트. 차가운 gray-900 대신 따뜻한 다크브라운. */
+  --ink: #2b2420;
+  /** 보조 텍스트 · tagline · 타임스탬프. paper가 밝아진 만큼 대비를 안전하게
+   *  유지하기 위해 다이어리스러운 브라운기를 빼고 중립적인 warm gray로. */
+  --ink-soft: #7a7369;
+  /** 앱 전체에서 유일한 브랜드 액션 컬러(전송/CTA/리마인더 알림) — 도장·인주에서 따온
+   *  "지킨 약속"의 색. amber를 임의 배정하는 대신 이 색 하나로 리마인더/알림 의미를 통일한다. */
+  --seal: #b23a2e;
+  /** seal의 옅은 tint 배경 — pending 리마인더 배지/스트립 등. */
+  --seal-soft: #f3ded9;
+  /** 기억(Shared Memory) 기능 전용 — "확정된 사실"이 아니라 "어렴풋한 기억"을 표현하는
+   *  흐릿한 자수정. 이번 단계 Home에서는 아직 쓰이지 않고, Chat/Story 기억 UI로 확장할 때 재사용한다. */
+  --memory: #5b4b73;
+  /** Story Mode의 어두운 시네마틱 톤. 이번 단계에서는 홈의 StoryModeEntry 티저에서만
+   *  살짝 예고하고, Story 화면 본체 리디자인은 다음 단계에서 진행한다. */
+  --story-bg: #17130f;
+  --story-ink: #efe4d2;
+  /** Story Lobby(StoryHomeScreen/StoryHistoryScreen) 전용 바탕. 밝은 warm beige →
+   *  dark warm brown을 차례로 시도했으나 brown/beige 기가 Story cover(밤/눈/학교의
+   *  blue-navy 계열)와 색온도가 충돌해서 cool charcoal/blue-gray로 정착했다 —
+   *  Story 진행 화면의 --story-bg(완전한 dark, 그것도 사실 warm 계열)보다 한 단
+   *  밝으면서도 이번엔 계열 자체가 다른 cool한 dark surface로 둬서 "Home/Chat
+   *  (밝음) → Lobby(cool dark) → Story 진행(deeper warm dark)"으로 이어진다.
+   *  --paper를 재정의하지 않고 별도 토큰으로 둬서 Home/Chat/Memory/Reminder는
+   *  전혀 영향받지 않는다. */
+  --story-lobby-bg: #1c2026;
+  --story-lobby-sunken: #292f37;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-paper: var(--paper);
+  --color-paper-sunken: var(--paper-sunken);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-seal: var(--seal);
+  --color-seal-soft: var(--seal-soft);
+  --color-memory: var(--memory);
+  --color-story-bg: var(--story-bg);
+  --color-story-ink: var(--story-ink);
+  --color-story-lobby-bg: var(--story-lobby-bg);
+  --color-story-lobby-sunken: var(--story-lobby-sunken);
+
+  /* UI/본문 기본 서체는 Pretendard(app/layout.tsx에서 next/font/local로 self-host).
+     제목 전용 세리프는 Gowun Batang — 캐릭터 이름 네임플레이트, 섹션 헤드라인처럼
+     절제된 자리에만 font-display 유틸리티로 쓴다. 본문에는 쓰지 않는다. */
+  --font-sans: var(--font-pretendard);
+  --font-display: var(--font-gowun-batang);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  /* 과거 여기 하드코딩된 Arial 폴백이 next/font로 로드한 서체를 전부 덮어써서 실제로는
+     시스템 기본 산세리프가 렌더링되고 있었다. var(--font-sans)(Pretendard)를 명시적으로
+     참조해 Tailwind 유틸리티 클래스 존재 여부와 무관하게 항상 적용되도록 고정한다. */
+  font-family: var(--font-sans), "Pretendard", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* 새 메시지/배너/토스트가 등장할 때의 경량 애니메이션.
+   React가 새로 마운트하는 엘리먼트에만 재생되므로(키가 있는 리스트 항목),
+   이미 떠 있던 기존 메시지가 다시 애니메이션되지 않는다. */
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-message-in {
+  animation: message-in 0.25s ease-out;
+}
+
+/* 리마인더 발화 메시지처럼 "캐릭터가 먼저 연락했다"는 느낌을 더 강조하고 싶을 때. */
+@keyframes message-in-strong {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-message-in-strong {
+  animation: message-in-strong 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* 리마인더 바텀시트가 아래에서 위로 슬라이드업. */
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.animate-sheet-up {
+  animation: sheet-up 0.25s ease-out;
+}
+
+/* 리마인더/proactive 캐릭터 메시지가 새로 도착했을 때 폰 프레임 전체가 짧게 진동하는
+   느낌을 준다. 좌우 이동 폭이 점점 줄어들도록(감쇠) 해서 실제 진동처럼 자연스럽게
+   멈춘다. 일반 채팅 응답에는 트리거하지 않는다 — components/ChatApp.tsx 참고. */
+@keyframes phone-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  10% {
+    transform: translateX(-5px);
+  }
+  20% {
+    transform: translateX(5px);
+  }
+  30% {
+    transform: translateX(-5px);
+  }
+  40% {
+    transform: translateX(4px);
+  }
+  50% {
+    transform: translateX(-4px);
+  }
+  60% {
+    transform: translateX(3px);
+  }
+  70% {
+    transform: translateX(-3px);
+  }
+  80% {
+    transform: translateX(2px);
+  }
+  90% {
+    transform: translateX(-2px);
+  }
+}
+
+.animate-phone-shake {
+  animation: phone-shake 0.85s ease-in-out;
+}
+
+/* bell 아이콘이 리마인더 도착 시 짧게 종 울리듯 강조되는 효과. */
+@keyframes bell-ring {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  15% {
+    transform: rotate(-15deg);
+  }
+  30% {
+    transform: rotate(12deg);
+  }
+  45% {
+    transform: rotate(-10deg);
+  }
+  60% {
+    transform: rotate(6deg);
+  }
+  75% {
+    transform: rotate(-4deg);
+  }
+  90% {
+    transform: rotate(2deg);
+  }
+}
+
+.animate-bell-ring {
+  animation: bell-ring 0.6s ease-in-out;
+  transform-origin: 50% 20%;
+}
+
+/* 동작 축소를 선호하는 환경에서는 진동/흔들림 애니메이션을 완전히 끈다. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-phone-shake,
+  .animate-bell-ring {
+    animation: none;
+  }
+}
+
+/* 캐릭터 레일처럼 가로 스크롤은 쓰되 스크롤바를 UI로 노출하고 싶지 않은 곳에서 쓴다.
+   Tailwind v4 기본 유틸리티에는 없어서 커스텀으로 추가. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
